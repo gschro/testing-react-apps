@@ -6,6 +6,7 @@ import {render, screen, waitForElementToBeRemoved} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import {build, fake} from '@jackfranklin/test-data-bot'
 import {setupServer} from 'msw/node'
+import {rest} from 'msw'
 import Login from '../../components/login-submission'
 import {handlers} from 'test/server-handlers.js'
 
@@ -20,6 +21,7 @@ const server = setupServer(...handlers)
 
 beforeAll(() => server.listen())
 afterAll(() => server.close)
+afterEach(() => server.resetHandlers())
 
 test(`logging in displays the user's username`, async () => {
   render(<Login />)
@@ -41,5 +43,26 @@ test(`missing username displays error`, async () => {
   userEvent.click(screen.getByRole('button', {name: /submit/i}))
   await waitForElementToBeRemoved(() => screen.getByLabelText(/loading/i))
 
-  expect(screen.getByText(/username required/i)).toBeInTheDocument()
+  expect(screen.getByRole('alert').textContent).toMatchInlineSnapshot(
+    `"username required"`,
+  )
+})
+
+test(`unknown error`, async () => {
+  const errorMessage = 'server error'
+
+  server.use(
+    rest.post(
+      'https://auth-provider.example.com/api/login',
+      async (req, res, ctx) =>
+        res(ctx.status(500), ctx.json({message: errorMessage})),
+    ),
+  )
+
+  render(<Login />)
+
+  userEvent.click(screen.getByRole('button', {name: /submit/i}))
+  await waitForElementToBeRemoved(() => screen.getByLabelText(/loading/i))
+
+  expect(screen.getByRole('alert')).toHaveTextContent(errorMessage)
 })
